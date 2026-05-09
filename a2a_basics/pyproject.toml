@@ -1,0 +1,32 @@
+[project]
+name = "a2a-basics"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "a2a-sdk>=1.0.2",
+    "agno>=2.6.5",
+    "aiofiles>=25.1.0",
+    "cohere>=6.1.0",
+    "fastmcp>=3.2.4",
+    "google-adk>=1.33.0",
+    "google-search-results>=2.4.2",
+    "gradio>=6.14.0",
+    "langchain>=1.2.18",
+    "langchain-aws>=1.4.6",
+    "langchain-classic>=1.0.7",
+    "langchain-community>=0.4.1",
+    "langchain-mcp-adapters>=0.2.2",
+    "langchain-ollama>=1.1.0",
+    "langchain-tavily>=0.2.18",
+    "langgraph>=1.1.10",
+    "langgraph-prebuilt>=1.0.13",
+    "litellm>=1.83.14",
+    "mcp>=1.27.1",
+    "ollama>=0.6.2",
+    "openai>=2.24.0",
+    "pandas>=3.0.2",
+    "pip-system-certs>=5.3",
+    "rich>=15.0.0",
+]
