@@ -155,46 +155,103 @@ Jupyter notebooks for building stateful, graph-based agent workflows with LangGr
 
 ### 5. `mcp_basics/` — Model Context Protocol (MCP)
 
-A minimal but complete MCP implementation: a **FastMCP tool server** and an **LLM-powered client** that connects to it.
+A comprehensive MCP implementation showcasing all three MCP primitives — **Tools**, **Resources**, and **Prompts** — across three independent FastMCP servers, each with a dedicated client.
 
 #### Architecture
 
 ```
-┌─────────────────────────────┐        ┌──────────────────────────────────┐
-│   MCP Client (client.py)    │◄──────►│  FastMCP Tool Server             │
-│   MCPAgent + ChatCohere     │  HTTP  │  tools/tool_server.py            │
-│   (mcp-use)                 │        │  http://127.0.0.1:8001/toolserver│
-└─────────────────────────────┘        └──────────────────────────────────┘
+                        ┌─────────────────────────────────────────────────────┐
+                        │               mcp_basics/                           │
+                        │                                                     │
+  servers/              │  servers/tool_server.py      port 8001  /toolserver │
+  clients/              │  servers/resource_server.py  port 8003  /resource.. │
+                        │  servers/prompt_server.py    port 8004  /prompt..   │
+                        └───────────────────┬─────────────────────────────────┘
+                                            │  streamable-http
+          ┌─────────────────────────────────▼─────────────────────────────────┐
+          │  Clients  (servers/clients/)                                      │
+          │  tool_client.py     ─── config/tool_server.json     (port 8001)  │
+          │  resource_client.py ─── config/resource_server.json (port 8003)  │
+          │  prompt_client.py   ─── config/prompt_server.json   (port 8004)  │
+          └───────────────────────────────────────────────────────────────────┘
+                   All clients: MCPAgent + ChatCohere (command-a-03-2025)
 ```
 
-#### Tool Server (`tools/tool_server.py`)
+#### File Structure
 
-Built with **FastMCP** over `streamable-http` transport. Exposes 5 arithmetic tools:
+```
+mcp_basics/
+├── servers/
+│   ├── tool_server.py       # FastMCP arithmetic tool server  (port 8001)
+│   ├── resource_server.py   # FastMCP resource server         (port 8003)
+│   ├── prompt_server.py     # FastMCP prompt server           (port 8004)
+│   └── clients/
+│       ├── tool_client.py       # Client for tool_server
+│       ├── resource_client.py   # Client for resource_server
+│       └── prompt_client.py     # Client for prompt_server
+├── config/
+│   ├── tool_server.json         # MCP config → port 8001
+│   ├── resource_server.json     # MCP config → port 8003
+│   └── prompt_server.json       # MCP config → port 8004
+├── pyproject.toml
+└── main.py
+```
+
+---
+
+#### 🔧 Tool Server (`servers/tool_server.py`) — port 8001
+
+Built with **FastMCP** over `streamable-http`. Exposes 5 arithmetic tools with MCP annotations (`readOnlyHint`, `idempotentHint`, etc.):
 
 | Tool | Description |
 |------|-------------|
 | `add(a, b)` | Returns `a + b` |
 | `subtract(a, b)` | Returns `a - b` |
 | `multiply(a, b)` | Returns `a * b` |
-| `divide(a, b)` | Returns `a / b` (guards against division by zero) |
+| `divide(a, b)` | Returns `a / b` (division-by-zero guard) |
 | `power(a, b)` | Returns `a ** b` |
 
-#### MCP Client (`client.py`)
+Client: `servers/clients/tool_client.py` — interactive REPL with `ToolError` handling, conversation memory, and `clear` command.
 
-An interactive REPL powered by `mcp-use`'s `MCPAgent` and **Cohere** (`ChatCohere`). The agent reads the server config from `config/tool_server.json` and can call any registered tool based on natural language input.
+---
 
-#### Server Config (`config/tool_server.json`)
+#### 📦 Resource Server (`servers/resource_server.py`) — port 8003
 
-```json
-{
-  "mcpServers": {
-    "tool_server": {
-      "transport": "streamable-http",
-      "url": "http://127.0.0.1:8001/toolserver"
-    }
-  }
-}
-```
+Demonstrates all FastMCP resource types — static text, file-backed, JSON config, directory listing:
+
+| Resource URI | Type | Description |
+|---|---|---|
+| `resource://greeting` | `@mcp.resource` (text) | Simple greeting string |
+| `resource://notice` | `TextResource` | System maintenance notice |
+| `file://app/logs/application.log` | `@mcp.resource` (async file read) | Application log file |
+| `data://config` | `@mcp.resource` (JSON) | App configuration from `data/config.json` |
+| `file://<readme_path>` | `FileResource` | Project README file |
+| `resource://data-files` | `DirectoryResource` | Recursive listing of the `data/` directory |
+
+Client: `servers/clients/resource_client.py` — interactive REPL that answers questions using resource content.
+
+Config: `config/resource_server.json` → `http://127.0.0.1:8003/resourceserver`
+
+---
+
+#### 💬 Prompt Server (`servers/prompt_server.py`) — port 8004
+
+Demonstrates all FastMCP prompt return types — plain strings, `PromptMessage`, and `list[PromptMessage]`:
+
+| Prompt | Returns | Description |
+|--------|---------|-------------|
+| `explain-topic(topic)` | `str` | Generates an explanation request for any topic |
+| `summarize_prompt(content_uri, summary_type)` | `str` | Creates a summarization request for a resource URI |
+| `generate_code_request(language, task_description)` | `PromptMessage` | Structures a code generation request |
+| `roleplay_scenario(character, situation)` | `list[PromptMessage]` | Sets up a multi-turn roleplay conversation |
+| `log_analysis_prompt(data_uri, analysis_type, include_charts)` | `str` | Constructs a log analysis instruction |
+| `data_analysis_prompt(n_rows, columns, domain, data_description)` | `str` | Generates a professional data analysis prompt with persona, tasks, and constraints |
+
+Client: `servers/clients/prompt_client.py` — interactive REPL that leverages prompts, resources, and tools together.
+
+Config: `config/prompt_server.json` → `http://127.0.0.1:8004/promptserver`
+
+---
 
 #### Setup & Run
 
@@ -204,14 +261,18 @@ cd mcp_basics
 # Install dependencies
 uv sync
 
-# 1. Start the MCP Tool Server (terminal 1)
-uv run python tools/tool_server.py
+# Start servers (each in its own terminal)
+uv run python servers/tool_server.py       # Terminal 1 — port 8001
+uv run python servers/resource_server.py  # Terminal 2 — port 8003
+uv run python servers/prompt_server.py    # Terminal 3 — port 8004
 
-# 2. Start the MCP Client (terminal 2)
-uv run python client.py
+# Run the matching client
+uv run python servers/clients/tool_client.py      # Talks to tool_server
+uv run python servers/clients/resource_client.py  # Talks to resource_server
+uv run python servers/clients/prompt_client.py    # Talks to prompt_server
 ```
 
-**Dependencies:** `fastmcp`, `mcp-use`, `langchain-cohere`
+**Dependencies:** `fastmcp`, `mcp-use`, `langchain-cohere`, `aiofiles`
 
 ---
 

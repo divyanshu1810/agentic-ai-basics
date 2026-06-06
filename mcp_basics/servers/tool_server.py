@@ -1,4 +1,5 @@
 from mcp.server.fastmcp import FastMCP
+import numpy as np
 
 mcp = FastMCP(
     name="tool_server",  
