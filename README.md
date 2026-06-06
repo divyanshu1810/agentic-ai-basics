@@ -155,26 +155,30 @@ Jupyter notebooks for building stateful, graph-based agent workflows with LangGr
 
 ### 5. `mcp_basics/` — Model Context Protocol (MCP)
 
-A comprehensive MCP implementation showcasing all three MCP primitives — **Tools**, **Resources**, and **Prompts** — across three independent FastMCP servers, each with a dedicated client.
+A comprehensive MCP implementation covering all MCP primitives — **Tools**, **Resources**, **Prompts**, **Sampling**, **Elicitation**, and **Roots** — across independent FastMCP servers and feature-focused client demos.
 
 #### Architecture
 
 ```
                         ┌─────────────────────────────────────────────────────┐
-                        │               mcp_basics/                           │
-                        │                                                     │
-  servers/              │  servers/tool_server.py      port 8001  /toolserver │
-  clients/              │  servers/resource_server.py  port 8003  /resource.. │
-                        │  servers/prompt_server.py    port 8004  /prompt..   │
+                        │                servers/                             │
+                        │  tool_server.py      port 8001  /toolserver        │
+                        │  resource_server.py  port 8003  /resourceserver    │
+                        │  prompt_server.py    port 8004  /promptserver      │
                         └───────────────────┬─────────────────────────────────┘
-                                            │  streamable-http
+                                            │  streamable-http (MCPAgent + Cohere)
           ┌─────────────────────────────────▼─────────────────────────────────┐
-          │  Clients  (servers/clients/)                                      │
-          │  tool_client.py     ─── config/tool_server.json     (port 8001)  │
-          │  resource_client.py ─── config/resource_server.json (port 8003)  │
-          │  prompt_client.py   ─── config/prompt_server.json   (port 8004)  │
+          │  servers/clients/                                                 │
+          │  tool_client.py     ←→  tool_server.json     (port 8001)         │
+          │  resource_client.py ←→  resource_server.json (port 8003)         │
+          │  prompt_client.py   ←→  prompt_server.json   (port 8004)         │
           └───────────────────────────────────────────────────────────────────┘
-                   All clients: MCPAgent + ChatCohere (command-a-03-2025)
+
+Advanced MCP Features  (clients/ — each subfolder is self-contained)
+
+  clients/sampling/     server.py  ←→  client.py      (port 8005)  LLM Sampling
+  clients/elicitation/  server.py  ←→  client.py      (port 8006)  Elicitation
+  clients/root/         root_server.py ←→ root_client.py (port 8028) Roots
 ```
 
 #### File Structure
@@ -182,17 +186,30 @@ A comprehensive MCP implementation showcasing all three MCP primitives — **Too
 ```
 mcp_basics/
 ├── servers/
-│   ├── tool_server.py       # FastMCP arithmetic tool server  (port 8001)
-│   ├── resource_server.py   # FastMCP resource server         (port 8003)
-│   ├── prompt_server.py     # FastMCP prompt server           (port 8004)
+│   ├── tool_server.py         # FastMCP arithmetic tools       (port 8001)
+│   ├── resource_server.py     # FastMCP resources              (port 8003)
+│   ├── prompt_server.py       # FastMCP prompts                (port 8004)
 │   └── clients/
-│       ├── tool_client.py       # Client for tool_server
-│       ├── resource_client.py   # Client for resource_server
-│       └── prompt_client.py     # Client for prompt_server
+│       ├── tool_client.py         # Client → tool_server
+│       ├── resource_client.py     # Client → resource_server
+│       └── prompt_client.py       # Client → prompt_server
+├── clients/
+│   ├── sampling/
+│   │   ├── server.py          # FastMCP sampling server        (port 8005)
+│   │   ├── client.py          # Client with sampling_callback
+│   │   └── config.json
+│   ├── elicitation/
+│   │   ├── server.py          # FastMCP elicitation server     (port 8006)
+│   │   ├── client.py          # Client with elicitation_callback
+│   │   └── config.py          # (JSON config)
+│   └── root/
+│       ├── root_server.py     # MCPServer with Roots support   (port 8028)
+│       ├── root_client.py     # Client with list_roots_callback
+│       └── config.json
 ├── config/
-│   ├── tool_server.json         # MCP config → port 8001
-│   ├── resource_server.json     # MCP config → port 8003
-│   └── prompt_server.json       # MCP config → port 8004
+│   ├── tool_server.json       # MCP config → port 8001
+│   ├── resource_server.json   # MCP config → port 8003
+│   └── prompt_server.json     # MCP config → port 8004
 ├── pyproject.toml
 └── main.py
 ```
@@ -230,8 +247,6 @@ Demonstrates all FastMCP resource types — static text, file-backed, JSON confi
 
 Client: `servers/clients/resource_client.py` — interactive REPL that answers questions using resource content.
 
-Config: `config/resource_server.json` → `http://127.0.0.1:8003/resourceserver`
-
 ---
 
 #### 💬 Prompt Server (`servers/prompt_server.py`) — port 8004
@@ -249,7 +264,45 @@ Demonstrates all FastMCP prompt return types — plain strings, `PromptMessage`,
 
 Client: `servers/clients/prompt_client.py` — interactive REPL that leverages prompts, resources, and tools together.
 
-Config: `config/prompt_server.json` → `http://127.0.0.1:8004/promptserver`
+---
+
+#### 🔁 Sampling (`clients/sampling/`) — port 8005
+
+Demonstrates the **MCP Sampling** primitive — a server can request the client's LLM to generate a response mid-tool-execution.
+
+**Server** (`server.py`): Exposes a `get_product` tool that uses `ctx.session.create_message()` to ask the client's LLM to classify a user query into a product category, then filters a local `product.csv` and returns matching records.
+
+**Client** (`client.py`): Registers a `sampling_callback` that receives `CreateMessageRequestParams` from the server. It inspects model preference `hints` and routes to the appropriate LLM:
+
+| Hint | LLM used |
+|------|----------|
+| `"llama"` / `"qwen"` | Ollama (`qwen2.5:1.5b`) |
+| default | Cohere (`command-a-03-2025`) |
+
+---
+
+#### 🙋 Elicitation (`clients/elicitation/`) — port 8006
+
+Demonstrates the **MCP Elicitation** primitive — a server can pause tool execution and request structured input from the client's user at runtime.
+
+**Server** (`server.py`): Two tools that use `ctx.elicit()` with Pydantic schemas:
+
+| Tool | Schema | Description |
+|------|--------|-------------|
+| `collect_username` | `user_name (str)` | Interactively collects the user's name |
+| `search_products` | `category`, `quantity`, `unit_price` | Collects search filters, queries `product.csv` |
+
+**Client** (`client.py`): Registers an `elicitation_callback` that introspects the JSON schema (`properties`, `anyOf`, `type`), prompts the user field-by-field with type coercion (`str`/`int`/`float`/`bool`), and returns an `ElicitResult`.
+
+---
+
+#### 🌳 Roots (`clients/root/`) — port 8028
+
+Demonstrates the **MCP Roots** primitive — clients advertise accessible filesystem roots to the server, enabling context-aware tool behaviour.
+
+**Server** (`root_server.py`): An `MCPServer` exposing a `get_workspace_info` tool that calls `ctx.list_roots()` to discover and list all workspaces declared by the client.
+
+**Client** (`root_client.py`): Registers a `list_roots_callback` that returns a `ListRootsResult` with dynamically determined `Root` objects (URI + name).
 
 ---
 
@@ -261,18 +314,28 @@ cd mcp_basics
 # Install dependencies
 uv sync
 
-# Start servers (each in its own terminal)
+# ── Servers (servers/) ──────────────────────────────────────────────
 uv run python servers/tool_server.py       # Terminal 1 — port 8001
 uv run python servers/resource_server.py  # Terminal 2 — port 8003
 uv run python servers/prompt_server.py    # Terminal 3 — port 8004
 
-# Run the matching client
-uv run python servers/clients/tool_client.py      # Talks to tool_server
-uv run python servers/clients/resource_client.py  # Talks to resource_server
-uv run python servers/clients/prompt_client.py    # Talks to prompt_server
+# ── Matching clients ────────────────────────────────────────────────
+uv run python servers/clients/tool_client.py
+uv run python servers/clients/resource_client.py
+uv run python servers/clients/prompt_client.py
+
+# ── Advanced features (clients/) — start server first, then client ──
+cd clients/sampling    && uv run python server.py   # port 8005
+                       && uv run python client.py
+
+cd clients/elicitation && uv run python server.py   # port 8006
+                       && uv run python client.py
+
+cd clients/root        && uv run python root_server.py  # port 8028
+                       && uv run python root_client.py
 ```
 
-**Dependencies:** `fastmcp`, `mcp-use`, `langchain-cohere`, `aiofiles`
+**Dependencies:** `fastmcp`, `mcp-use`, `langchain-cohere`, `langchain-ollama`, `aiofiles`, `pandas`, `python-dotenv`
 
 ---
 

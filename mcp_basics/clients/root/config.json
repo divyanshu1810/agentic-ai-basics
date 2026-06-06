@@ -1,0 +1,7 @@
+{
+    "mcpServers": {
+        "file-manager": {
+            "url": "http://localhost:8028/mcp"
+        }
+    }
+}
