@@ -11,6 +11,7 @@ agentic-ai-basics/
 ├── oops_basics/          # Python OOP fundamentals for AI engineering
 ├── langchain_basics/     # LangChain & RAG with Jupyter notebooks
 ├── langgraph_basics/     # LangGraph stateful agent graphs
+├── fastapi_basics/       # FastAPI microservices — Event Service + Assistant Service
 ├── mcp_basics/           # Model Context Protocol (MCP) server + client
 └── a2a_basics/           # Agent-to-Agent (A2A) protocol implementation
 ```
@@ -37,7 +38,99 @@ Core Python object-oriented patterns as they apply to AI agent design.
 
 ---
 
-### 2. `langchain_basics/` — LangChain & RAG
+### 2. `fastapi_basics/` — FastAPI Microservices
+
+Two independent FastAPI services demonstrating REST API design, SQLAlchemy ORM, Pydantic v2 validation, and inter-service communication.
+
+#### Architecture
+
+```
+┌──────────────────────────────────┐        ┌──────────────────────────────────┐
+│   Assistant Service              │◄──────►│   Event Service                  │
+│   assistant_service/app.py       │  HTTP  │   event_service/app.py           │
+│   port 8000 (default)            │        │   port 8001 (default)            │
+│   Natural-language query layer   │        │   CRUD + SQLite via SQLAlchemy   │
+└──────────────────────────────────┘        └──────────────────────────────────┘
+```
+
+#### Event Service (`event_service/`)
+
+A full CRUD REST API backed by **SQLite** via **SQLAlchemy**, with **Pydantic v2** request/response schemas.
+
+| File | Role |
+|------|------|
+| `app.py` | FastAPI app — all route handlers |
+| `models.py` | SQLAlchemy `Event` ORM model (`events` table) |
+| `schemas.py` | Pydantic `EventCreate`, `EventUpdate`, `EventOut` schemas with validators |
+| `config.py` | SQLAlchemy engine + session factory + `get_db` dependency |
+
+**Endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Health check |
+| `POST` | `/events/` | Create a new event |
+| `GET` | `/events/` | List all events (ordered by date) |
+| `GET` | `/events/{id}` | Fetch a single event |
+| `PUT` | `/events/change/{id}` | Update an event |
+| `DELETE` | `/events/cancel/{id}` | Delete an event |
+| `GET` | `/events/upcoming/` | All future events |
+| `GET` | `/events/next/` | The single next upcoming event |
+| `GET` | `/events/today/` | Events happening today |
+
+**Event model fields:** `id`, `title`, `city`, `date`, `organizer`, `organizer_email`
+
+#### Assistant Service (`assistant_service/`)
+
+A lightweight natural-language query layer that calls the Event Service and returns plain-English answers.
+
+| File | Role |
+|------|------|
+| `app.py` | FastAPI app — health check + `/assistant` GET & POST endpoints |
+
+**Supported query patterns** (via `?q=` parameter):
+
+| Query | Response |
+|-------|----------|
+| `"next event"` / `"first upcoming"` | Returns the single next upcoming event |
+| `"upcoming"` / `"future events"` | Returns all future events |
+| `"events in <city>"` | Filters events by city name |
+| `"events on YYYY-MM-DD"` | Filters events by exact date |
+| `"how many"` / `"count"` | Returns total event count |
+
+**Environment variable:**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `EVENT_SERVICE_URL` | `http://localhost:8001` | Base URL of the Event Service |
+
+#### Setup & Run
+
+```bash
+cd fastapi_basics
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install dependencies for each service
+pip install -r event_service/requirement.txt
+pip install -r assistant_service/requirement.txt
+
+# 1. Start the Event Service (terminal 1)
+uvicorn event_service.app:app --port 8001 --reload
+
+# 2. Start the Assistant Service (terminal 2)
+EVENT_SERVICE_URL=http://localhost:8001 uvicorn assistant_service.app:app --port 8000 --reload
+```
+
+**Interactive docs** are auto-generated at `http://localhost:8000/docs` and `http://localhost:8001/docs`.
+
+**Dependencies:** `fastapi`, `uvicorn`, `sqlalchemy`, `pydantic[email]`, `requests`
+
+---
+
+### 3. `langchain_basics/` — LangChain & RAG
 
 Jupyter notebooks exploring LangChain's core abstractions.
 
@@ -50,7 +143,7 @@ PDF assets (`emendo.pdf`, `resume.pdf`) are used as document sources for RAG exp
 
 ---
 
-### 3. `langgraph_basics/` — LangGraph Stateful Agents
+### 4. `langgraph_basics/` — LangGraph Stateful Agents
 
 Jupyter notebooks for building stateful, graph-based agent workflows with LangGraph.
 
@@ -60,7 +153,7 @@ Jupyter notebooks for building stateful, graph-based agent workflows with LangGr
 
 ---
 
-### 4. `mcp_basics/` — Model Context Protocol (MCP)
+### 5. `mcp_basics/` — Model Context Protocol (MCP)
 
 A minimal but complete MCP implementation: a **FastMCP tool server** and an **LLM-powered client** that connects to it.
 
@@ -122,7 +215,7 @@ uv run python client.py
 
 ---
 
-### 5. `a2a_basics/` — Agent-to-Agent (A2A) Protocol
+### 6. `a2a_basics/` — Agent-to-Agent (A2A) Protocol
 
 A production-style implementation of Google's **A2A (Agent-to-Agent) protocol** — an open standard for agents to discover, communicate with, and delegate tasks to other agents over HTTP.
 
@@ -206,6 +299,7 @@ The agent is then discoverable and callable by any A2A-compliant client or orche
 
 | Module | Variable | Purpose |
 |--------|----------|---------|
+| `fastapi_basics` | `EVENT_SERVICE_URL` | Base URL of the Event Service (default: `http://localhost:8001`) |
 | `a2a_basics` | `COHERE_API_KEY` | Cohere LLM (`command-a-03-2025`) |
 | `a2a_basics` | `TAVILY_API_KEY` | Tavily web search tool |
 | `mcp_basics` | `COHERE_API_KEY` | Cohere LLM for MCP agent |
@@ -217,22 +311,24 @@ The agent is then discoverable and callable by any A2A-compliant client or orche
 | Layer | Technology |
 |-------|-----------|
 | Language | Python 3.11+ |
-| Package Manager | [uv](https://github.com/astral-sh/uv) |
+| Package Manager | [uv](https://github.com/astral-sh/uv) (modules 1–2, 5–6), pip/venv (fastapi_basics) |
 | LLM | Cohere `command-a-03-2025` |
 | Agent Framework | LangGraph (ReAct), LangChain |
 | Web Search | Tavily Search API |
+| REST API | FastAPI, Uvicorn |
+| ORM | SQLAlchemy + SQLite |
+| Validation | Pydantic v2 |
 | MCP | FastMCP, mcp-use |
 | A2A Protocol | a2a-sdk (Google) |
-| API Server | Uvicorn / Starlette, FastAPI |
 
 ---
 
 ## 🚀 Learning Path
 
 ```
-oops_basics  ──►  langchain_basics  ──►  langgraph_basics  ──►  mcp_basics  ──►  a2a_basics
-   OOP               LangChain              LangGraph             MCP tools        A2A Protocol
-fundamentals         & RAG basics          stateful graphs        & clients        production agent
+oops_basics  ──►  langchain_basics  ──►  langgraph_basics  ──►  fastapi_basics  ──►  mcp_basics  ──►  a2a_basics
+   OOP               LangChain              LangGraph              FastAPI REST        MCP tools        A2A Protocol
+fundamentals         & RAG basics          stateful graphs        microservices        & clients        production agent
 ```
 
 ---
